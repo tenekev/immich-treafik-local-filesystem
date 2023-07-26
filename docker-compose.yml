@@ -8,12 +8,6 @@ networks:
   backend:
     driver: bridge
 
-volumes:
-  Users:
-    external: true
-  Photos:
-    external: true
-
 services:
   immich-server:
     container_name: immich_server
@@ -41,8 +35,8 @@ services:
       - backend
     volumes:
       - ${UPLOAD_LOCATION}:/usr/src/app/upload 
-      - Folder1:/folder1:ro
-      - Folder2:/folder2:ro
+      - /path/to/Folder1:/folder1:ro
+      - /path/to/Folder2:/folder2:ro
     env_file:
       - stack.env
     depends_on:
