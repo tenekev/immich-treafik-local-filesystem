@@ -1,0 +1,140 @@
+version: "3.8"
+
+name: 'gitops_service_immich'    
+
+networks:
+  proxy:
+    external: true
+  backend:
+    driver: bridge
+
+volumes:
+  Users:
+    external: true
+  Photos:
+    external: true
+
+services:
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
+    command: [ "start.sh", "immich" ]
+    networks:
+      - backend
+    volumes:
+      - ${UPLOAD_LOCATION}:/usr/src/app/upload
+      - /path/to/Folder1:/folder1:ro
+      - /path/to/Folder2:/folder2:ro
+    env_file:
+      - stack.env
+    depends_on:
+      - redis
+      - database
+      - typesense
+    restart: unless-stopped
+
+  immich-microservices:
+    container_name: immich_microservices
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
+    command: [ "start.sh", "microservices" ]
+    networks:
+      - backend
+    volumes:
+      - ${UPLOAD_LOCATION}:/usr/src/app/upload 
+      - Folder1:/folder1:ro
+      - Folder2:/folder2:ro
+    env_file:
+      - stack.env
+    depends_on:
+      - redis
+      - database
+      - typesense
+    restart: unless-stopped
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}
+    networks:
+      - backend
+    volumes:
+      - ${DIR_CONFIG}/models:/cache
+    env_file:
+      - stack.env
+    restart: unless-stopped
+
+  immich-web:
+    container_name: immich_web
+    image: ghcr.io/immich-app/immich-web:${IMMICH_VERSION:-release}
+    networks:
+      - backend
+    env_file:
+      - stack.env
+    restart: unless-stopped
+
+  typesense:
+    container_name: immich_typesense
+    image: typesense/typesense:0.24.1@sha256:9bcff2b829f12074426ca044b56160ca9d777a0c488303469143dd9f8259d4dd
+    networks:
+      - backend
+    environment:
+      - TYPESENSE_API_KEY=${TYPESENSE_API_KEY}
+      - TYPESENSE_DATA_DIR=/data
+    logging:
+      driver: none
+    volumes:
+      - ${DIR_CONFIG}/typesense:/data
+    restart: unless-stopped
+
+  redis:
+    container_name: immich_redis
+    image: redis:6.2-alpine@sha256:70a7a5b641117670beae0d80658430853896b5ef269ccf00d1827427e3263fa3
+    networks:
+      - backend
+    volumes:
+      - ${DIR_CONFIG}/redis:/data
+    restart: unless-stopped
+
+  database:
+    container_name: immich_postgres
+    image: postgres:14-alpine@sha256:28407a9961e76f2d285dc6991e8e48893503cc3836a4755bbc2d40bcc272a441
+    networks:
+      - backend
+    env_file:
+      - stack.env
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_DB: ${DB_DATABASE_NAME}
+      PG_DATA: /var/lib/postgresql/data
+    volumes:
+      - ${DIR_CONFIG}/db:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  immich-proxy:
+    container_name: immich_proxy
+    image: ghcr.io/immich-app/immich-proxy:${IMMICH_VERSION:-release}
+    networks:
+      - backend
+      - proxy
+    environment:
+      # Make sure these values get passed through from the env file
+      - IMMICH_SERVER_URL
+      - IMMICH_WEB_URL
+    ports:
+      - 8080:8080
+    depends_on:
+      - immich-server
+      - immich-web
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.immich.entrypoints=http"
+      - "traefik.http.routers.immich.rule=Host(`immich.${DOMAIN_NAME}`)"
+      - "traefik.http.middlewares.immich-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.immich.middlewares=immich-https-redirect"
+      - "traefik.http.routers.immich-secure.entrypoints=https"
+      - "traefik.http.routers.immich-secure.rule=Host(`immich.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.immich-secure.tls=true"
+      - "traefik.http.routers.immich-secure.service=immich"
+      - "traefik.http.services.immich.loadbalancer.server.port=8080"
+      - "traefik.docker.network=proxy"
