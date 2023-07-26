@@ -1,5 +1,41 @@
+# Immich with local filesystem and Traefik
 
-## CLI Import of local files
+## Portainer
+This docker-compose was written for Portainer's Stacks but it can run standalone. Portainer is not mandatory. This is only mentioned to explain the specific naming of the `.env` file.
+
+In the `docker-compose.yml` the `env_file` is defined as `stack.env`.
+The `.env` file is named `stack.env`. 
+
+## Traefik Reverse Proxy
+
+`immich-proxy` which is a Nginx container is being proxied through Traefik because that's what I use. 
+
+```yml
+networks:
+  proxy:
+    external: true
+services:
+  immich-proxy:
+    ...
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.immich.entrypoints=http"
+      - "traefik.http.routers.immich.rule=Host(`immich.${DOMAIN_NAME}`)"
+      - "traefik.http.middlewares.immich-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.immich.middlewares=immich-https-redirect"
+      - "traefik.http.routers.immich-secure.entrypoints=https"
+      - "traefik.http.routers.immich-secure.rule=Host(`immich.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.immich-secure.tls=true"
+      - "traefik.http.routers.immich-secure.service=immich"
+      - "traefik.http.services.immich.loadbalancer.server.port=8080"
+      - "traefik.docker.network=proxy"
+```
+
+[Setting up Traefik by TechnoTim](https://technotim.live/posts/traefik-portainer-ssl/)
+
+## Immich CLI - Importing of local files on a schedule
 
 [Documentation](https://documentation.immich.app/docs/features/bulk-upload)
 
@@ -91,7 +127,7 @@ These are not full examples but they give an idea.
 ```
 
 ##### Job for multiple users that run every 10min
-Take not of folders and keys.
+Take note of folders and keys.
 ```bash
 # User1
 */10 * * * * docker run ... -v /path/to/Folder1:/folder1 immich-app/immich-cli:latest upload ... --key api-key-user1 ... /folder1
@@ -101,3 +137,4 @@ Take not of folders and keys.
 */10 * * * * docker run ... -v /path/to/Folder3:/folder3 immich-app/immich-cli:latest upload ... --key api-key-user2 ... /folder3
 */10 * * * * docker run ... -v /path/to/Folder4:/folder4 immich-app/immich-cli:latest upload ... --key api-key-user2 ... /folder4
 ```
+
